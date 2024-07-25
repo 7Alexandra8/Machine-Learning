@@ -3,29 +3,29 @@ from sklearn.metrics import classification_report, confusion_matrix
 import joblib
 
 def load_data(csv_file):
-    """Load data from a CSV file."""
+
     return pd.read_csv(csv_file)
 
 def validate_model():
-    """Validate the model and output metrics to validation.txt."""
-    # Load validation data
+
+
     df = load_data('val.csv')
 
-    # Load model
+
     model = joblib.load('dga_model.pkl')
 
-    # Predict on validation set
+
     y_pred = model.predict(df['domain'])
     y_true = df['is_dga']
 
-    # Calculate confusion matrix
+
     cm = confusion_matrix(y_true, y_pred)
     tn, fp, fn, tp = cm.ravel()
 
-    # Calculate metrics
+
     report = classification_report(y_true, y_pred, output_dict=True)
 
-    # Write metrics to file
+
     with open('validation.txt', 'w') as f:
         f.write(f"True positive: {tp}\n")
         f.write(f"False positive: {fp}\n")
