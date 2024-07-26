@@ -1,54 +1,51 @@
 import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Embedding, LSTM, Dense
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.ensemble import RandomForestClassifier
+from imblearn.over_sampling import SMOTE
+from imblearn.pipeline import Pipeline as ImbalancedPipeline
+from sklearn.model_selection import GridSearchCV
 import joblib
 
-
-def load_data(csv_file):
-    return pd.read_csv(csv_file)
-
-
-def preprocess_data(df, max_words=10000, max_len=50):
-    tokenizer = Tokenizer(num_words=max_words)
-    tokenizer.fit_on_texts(df['domain'])
-    X = tokenizer.texts_to_sequences(df['domain'])
-    X = pad_sequences(X, maxlen=max_len)
-    y = df['is_dga'].values
-    return X, y, tokenizer
-
+def load_data():
+    # Загрузка обучающих данных
+    df = pd.read_json('train_data.json')
+    df = df.dropna(subset=['domain'])  # Удаление строк с пропущенными доменами
+    df['is_dga'] = (df['threat'] == 'dga').astype(int)
+    return df['domain'], df['is_dga']
 
 def train_model():
-    # Load training data
-    df = load_data('train_data.csv')
+    # Загрузка данных
+    X, y = load_data()
 
-    # Preprocess data
-    X, y, tokenizer = preprocess_data(df)
+    # Преобразование текста в признаки
+    tfidf = TfidfVectorizer(ngram_range=(1, 3), max_features=5000, stop_words='english')
 
-    # Split data into training and validation sets
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+    # Балансировка классов
+    smote = SMOTE(random_state=42)
 
-    # Define the LSTM model
-    model = Sequential([
-        Embedding(input_dim=10000, output_dim=128, input_length=50),
-        LSTM(64, return_sequences=True),
-        LSTM(32),
-        Dense(1, activation='sigmoid')
+    # Определение модели
+    rf_model = RandomForestClassifier(random_state=42)
+
+    # Создание пайплайна
+    model_pipeline = ImbalancedPipeline([
+        ('tfidf', tfidf),
+        ('smote', smote),
+        ('classifier', rf_model)
     ])
 
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    # Параметры для Grid Search
+    param_grid = {
+        'classifier__n_estimators': [100, 200],
+        'classifier__max_depth': [10, 20, 30],
+        'classifier__min_samples_split': [2, 5],
+        'classifier__min_samples_leaf': [1, 2]
+    }
 
-    model.fit(X_train, y_train, epochs=5, batch_size=32, validation_data=(X_val, y_val))
-
-    model.save('dga_model.h5')
-
-    joblib.dump(tokenizer, 'tokenizer.pkl')
-
-    print("Model and tokenizer saved.")
-
+    # Grid Search
+    grid_search = GridSearchCV(model_pipeline, param_grid, cv=5, scoring='f1', n_jobs=-1)
+    grid_search.fit(X, y)
+    joblib.dump(grid_search.best_estimator_, 'dga_classifier.pkl')
+    print("Модель успешно обучена и сохранена.")
 
 if __name__ == "__main__":
     train_model()
