@@ -1,37 +1,40 @@
 import pandas as pd
-from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 import joblib
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
-def load_validation_data():
-    """Загрузка и подготовка валидационных данных."""
-    df = pd.read_csv('val.csv')
-    df = df.dropna(subset=['domain'])  # Удалить строки с пропущенными доменами
-    df['is_dga'] = df['is_dga'].astype(int)
-    return df['domain'], df['is_dga']
+# 1. Загрузка сохраненной модели и векторизатора
+model = joblib.load('model.pkl')
+vectorizer = joblib.load('vectorizer.pkl')
 
-def validate_model():
-    """Оценка модели и сохранение результатов в 'validation.txt'."""
-    X_val, y_val = load_validation_data()
-    model = joblib.load('dga_classifier.pkl')
-    y_pred = model.predict(X_val)
+# 2. Загрузка валидационных данных из CSV
+val_df = pd.read_csv('val.csv')
+val_domains = val_df['domain']
+val_labels = val_df['is_dga']
 
-    tn, fp, fn, tp = confusion_matrix(y_val, y_pred).ravel()
-    accuracy = accuracy_score(y_val, y_pred)
-    precision = precision_score(y_val, y_pred)
-    recall = recall_score(y_val, y_pred)
-    f1 = f1_score(y_val, y_pred)
+# 3. Преобразование доменов в числовые представления и предсказание
+X_val = vectorizer.transform(val_domains)
+predictions = model.predict(X_val)
 
-    with open('validation.txt', 'w') as f:
-        f.write(f"True positive: {tp}\n")
-        f.write(f"False positive: {fp}\n")
-        f.write(f"False negative: {fn}\n")
-        f.write(f"True negative: {tn}\n")
-        f.write(f"Accuracy: {accuracy:.4f}\n")
-        f.write(f"Precision: {precision:.4f}\n")
-        f.write(f"Recall: {recall:.4f}\n")
-        f.write(f"F1: {f1:.4f}\n")
+# 4. Подсчет метрик качества модели
+true_positive = ((predictions == 1) & (val_labels == 1)).sum()
+false_positive = ((predictions == 1) & (val_labels == 0)).sum()
+false_negative = ((predictions == 0) & (val_labels == 1)).sum()
+true_negative = ((predictions == 0) & (val_labels == 0)).sum()
 
-    print("Результаты валидации сохранены в 'validation.txt'.")
+accuracy = accuracy_score(val_labels, predictions)
+precision = precision_score(val_labels, predictions)
+recall = recall_score(val_labels, predictions)
+f1 = f1_score(val_labels, predictions)
 
-if __name__ == "__main__":
-    validate_model()
+# 5. Запись метрик в файл
+with open('validation.txt', 'w') as f:
+    f.write(f"True positive: {true_positive}\n")
+    f.write(f"False positive: {false_positive}\n")
+    f.write(f"False negative: {false_negative}\n")
+    f.write(f"True negative: {true_negative}\n")
+    f.write(f"Accuracy: {accuracy:.4f}\n")
+    f.write(f"Precision: {precision:.4f}\n")
+    f.write(f"Recall: {recall:.4f}\n")
+    f.write(f"F1: {f1:.4f}\n")
+
+print("Валидация завершена. Результаты сохранены в validation.txt.")

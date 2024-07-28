@@ -1,51 +1,43 @@
+import json
 import pandas as pd
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.ensemble import RandomForestClassifier
-from imblearn.over_sampling import SMOTE
-from imblearn.pipeline import Pipeline as ImbalancedPipeline
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import RandomizedSearchCV
 import joblib
+from scipy.stats import randint, uniform
 
-def load_data():
-    # Загрузка обучающих данных
-    df = pd.read_json('train_data.json')
-    df = df.dropna(subset=['domain'])  # Удаление строк с пропущенными доменами
-    df['is_dga'] = (df['threat'] == 'dga').astype(int)
-    return df['domain'], df['is_dga']
+# 1. Загрузка данных
+with open('train_data.json', 'r') as f:
+    data = json.load(f)
 
-def train_model():
-    # Загрузка данных
-    X, y = load_data()
+# 2. Преобразование данных в DataFrame
+df = pd.DataFrame(data)
+domains = df['domain']
+labels = df['threat'].apply(lambda x: 1 if x == 'dga' else 0) #Метки: 1 - DGA, 0 - обычный домен
 
-    # Преобразование текста в признаки
-    tfidf = TfidfVectorizer(ngram_range=(1, 3), max_features=5000, stop_words='english')
+# 3. Преобразование данных
+vectorizer = TfidfVectorizer(max_features=3000, lowercase=False, analyzer='char_wb', ngram_range=(2, 4))
+X = vectorizer.fit_transform(domains)
 
-    # Балансировка классов
-    smote = SMOTE(random_state=42)
+# 4. Определение модели
+model = GradientBoostingClassifier()
 
-    # Определение модели
-    rf_model = RandomForestClassifier(random_state=42)
+# 5. Гиперпараметры для RandomizedSearchCV
+param_dist = {
+    'n_estimators': randint(100, 500),
+    'max_depth': randint(3, 10),
+    'min_samples_split': randint(2, 20),
+    'min_samples_leaf': randint(1, 20),
+    'learning_rate': uniform(0.01, 0.3),
+    'subsample': uniform(0.7, 1.0)
+}
 
-    # Создание пайплайна
-    model_pipeline = ImbalancedPipeline([
-        ('tfidf', tfidf),
-        ('smote', smote),
-        ('classifier', rf_model)
-    ])
+# 6. Поиск гиперпараметров с RandomizedSearchCV
+random_search = RandomizedSearchCV(model, param_distributions=param_dist, n_iter=50, scoring='accuracy', cv=3, verbose=1, n_jobs=-1)
+random_search.fit(X, labels)
 
-    # Параметры для Grid Search
-    param_grid = {
-        'classifier__n_estimators': [100, 200],
-        'classifier__max_depth': [10, 20, 30],
-        'classifier__min_samples_split': [2, 5],
-        'classifier__min_samples_leaf': [1, 2]
-    }
+# 7. Сохранение лучшей модели и векторизатора
+joblib.dump(random_search.best_estimator_, 'model.pkl')
+joblib.dump(vectorizer, 'vectorizer.pkl')
 
-    # Grid Search
-    grid_search = GridSearchCV(model_pipeline, param_grid, cv=5, scoring='f1', n_jobs=-1)
-    grid_search.fit(X, y)
-    joblib.dump(grid_search.best_estimator_, 'dga_classifier.pkl')
-    print("Модель успешно обучена и сохранена.")
-
-if __name__ == "__main__":
-    train_model()
+print("Обучение модели завершено. Модель и векторизатор сохранены.")

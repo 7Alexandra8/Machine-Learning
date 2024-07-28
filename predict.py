@@ -1,25 +1,20 @@
 import pandas as pd
 import joblib
 
-def load_test_data():
-    # Загрузка тестовых данных
-    df = pd.read_csv('test.csv')
-    df = df.dropna(subset=['domain'])  # Удаление строк с пропущенными доменами
-    return df['domain']
+# Загрузка модели и векторизатора
+model = joblib.load('model.pkl')
+vectorizer = joblib.load('vectorizer.pkl')
 
-def predict():
-    # Предсказания на тестовой выборке
-    X_test = load_test_data()
-    model = joblib.load('dga_classifier.pkl')
+# Загрузка тестовых данных
+test_df = pd.read_csv('test.csv')
+test_domains = test_df['domain']
 
-    # Получение предсказаний
-    y_pred = model.predict(X_test)
+# Преобразование и предсказание
+X_test = vectorizer.transform(test_domains)
+predictions = model.predict(X_test)
 
-    # Сохранение предсказаний
-    result = pd.DataFrame({'domain': X_test, 'is_dga': y_pred})
-    result.to_csv('prediction.csv', index=False)
+# Сохранение результатов
+output_df = pd.DataFrame({'domain': test_domains, 'is_dga': predictions})
+output_df.to_csv('prediction.csv', index=False)
 
-    print("Предсказания сохранены в 'prediction.csv'.")
-
-if __name__ == "__main__":
-    predict()
+print("Предсказания завершены. Результаты сохранены в prediction.csv.")
